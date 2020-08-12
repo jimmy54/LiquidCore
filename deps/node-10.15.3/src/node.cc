@@ -1081,6 +1081,7 @@ static void Exit(const FunctionCallbackInfo<Value>& args) {
   env->Exit(code);
 }
 
+#ifndef __LIQUIDCORE
 extern "C" void node_module_register(void* m) {
   struct node_module* mp = reinterpret_cast<struct node_module*>(m);
 
@@ -1114,6 +1115,11 @@ inline struct node_module* FindModule(struct node_module* list,
   CHECK(mp == nullptr || (mp->nm_flags & flag) != 0);
   return mp;
 }
+#else
+struct node_module* FindModule(struct node_module* list,
+                               const char* name,
+                               int flag);
+#endif
 
 node_module* get_builtin_module(const char* name) {
   return FindModule(modlist_builtin, name, NM_F_BUILTIN);
@@ -1215,6 +1221,7 @@ void InitModpendingOnce() {
   CHECK_EQ(0, uv_key_create(&thread_local_modpending));
 }
 
+#ifndef __LIQUIDCORE
 // DLOpen is process.dlopen(module, filename, flags).
 // Used to load 'module.node' dynamically shared objects.
 //
@@ -1331,7 +1338,7 @@ static void DLOpen(const FunctionCallbackInfo<Value>& args) {
   // Tell coverity that 'handle' should not be freed when we return.
   // coverity[leaked_storage]
 }
-
+#endif // !__LIQUIDCODE
 
 static void OnFatalError(const char* location, const char* message) {
   if (location) {
@@ -1999,7 +2006,12 @@ void SetupProcessObject(Environment* env,
                    "_stopProfilerIdleNotifier",
                    StopProfilerIdleNotifier);
     env->SetMethod(process, "abort", Abort);
+#ifdef __LIQUIDCORE
+    env->SetMethod(process, "chdir", fs::Chdir);
+#else
     env->SetMethod(process, "chdir", Chdir);
+#endif
+
     env->SetMethod(process, "umask", Umask);
   }
   env->SetMethod(process, "_getActiveRequests", GetActiveRequests);
@@ -2733,7 +2745,6 @@ int EmitExit(Environment* env) {
       ->Int32Value(env->context()).ToChecked();
 }
 
-
 ArrayBufferAllocator* CreateArrayBufferAllocator() {
   return new ArrayBufferAllocator();
 }
@@ -2742,7 +2753,6 @@ ArrayBufferAllocator* CreateArrayBufferAllocator() {
 void FreeArrayBufferAllocator(ArrayBufferAllocator* allocator) {
   delete allocator;
 }
-
 
 IsolateData* CreateIsolateData(Isolate* isolate, uv_loop_t* loop) {
   return new IsolateData(isolate, loop, nullptr);
@@ -2813,7 +2823,7 @@ void FreePlatform(MultiIsolatePlatform* platform) {
   delete platform;
 }
 
-
+#ifndef __LIQUIDCORE
 Local<Context> NewContext(Isolate* isolate,
                           Local<ObjectTemplate> object_template) {
   auto context = Context::New(isolate, nullptr, object_template);
@@ -2836,7 +2846,6 @@ Local<Context> NewContext(Isolate* isolate,
 
   return context;
 }
-
 
 inline int Start(Isolate* isolate, IsolateData* isolate_data,
                  const std::vector<std::string>& args,
@@ -2906,6 +2915,11 @@ inline int Start(Isolate* isolate, IsolateData* isolate_data,
 
   return exit_code;
 }
+#else
+int Start(Isolate* isolate, IsolateData* isolate_data,
+                 const std::vector<std::string>& args,
+                 const std::vector<std::string>& exec_args);
+#endif // !__LIQUIDCORE
 
 bool AllowWasmCodeGenerationCallback(
     Local<Context> context, Local<String>) {
@@ -2940,6 +2954,9 @@ inline int Start(uv_loop_t* event_loop,
   std::unique_ptr<ArrayBufferAllocator, decltype(&FreeArrayBufferAllocator)>
       allocator(CreateArrayBufferAllocator(), &FreeArrayBufferAllocator);
   Isolate* const isolate = NewIsolate(allocator.get());
+  /* LC */
+  Isolate* node_isolate = nullptr;
+  /*---*/
   if (isolate == nullptr)
     return 12;  // Signal internal error.
 
@@ -2981,6 +2998,7 @@ inline int Start(uv_loop_t* event_loop,
   return exit_code;
 }
 
+#ifndef __LIQUIDCORE
 int Start(int argc, char** argv) {
   atexit([] () { uv_tty_reset_mode(); });
   PlatformInit();
@@ -3041,6 +3059,7 @@ int Start(int argc, char** argv) {
 
   return exit_code;
 }
+#endif // !__LIQUIDCORE
 
 // Call built-in modules' _register_<module name> function to
 // do module registration explicitly.
